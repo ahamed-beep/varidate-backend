@@ -50,13 +50,13 @@ export const signupcontroller = async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: "muhamedahamed251@gmail.com",
-        pass: "sgyc wwxi ptvx iyhf"
+        user: "askmobisoft55@gmail.com",
+        pass: "bitw mduw ylst tdgh"
       }
     });
 
     const mailOptions = {
-      from: "muhamedahamed251@gmail.com",
+      from: "askmobisoft55@gmail.com",
       to: email,
       subject: "Verify Your Email",
       html: `
@@ -83,8 +83,7 @@ export const signupcontroller = async (req, res) => {
   }
 };
 
-// ✅ 2. Email verification via 6-digit code
-// Updated verifyCodeController
+
 export const verifyCodeController = async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -134,13 +133,13 @@ export const resendVerificationCode = async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: "muhamedahamed251@gmail.com",
-        pass: "sgyc wwxi ptvx iyhf"
+        user: "askmobisoft55@gmail.com",
+        pass: "bitw mduw ylst tdgh"
       }
     });
 
     const mailOptions = {
-      from: "muhamedahamed251@gmail.com",
+      from: "askmobisoft55@gmail.com",
       to: email,
       subject: "Resend: Verify Your Email",
       html: `

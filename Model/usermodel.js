@@ -9,7 +9,10 @@ const userSchema = new mongoose.Schema({
   
   // 🔑 Verification via code
   verificationCode: { type: String },
-  codeExpiresAt: { type: Date }
+  codeExpiresAt: { type: Date },
+  resetCode: { type: String },
+resetCodeExpiresAt: { type: Date },
+
 });
 
 const User = mongoose.model("User", userSchema);

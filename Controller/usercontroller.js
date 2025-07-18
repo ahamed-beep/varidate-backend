@@ -160,7 +160,7 @@ export const resendVerificationCode = async (req, res) => {
 };
 
 
-// ✅ 3. Login Controller
+
 export const logincontroller = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -192,5 +192,80 @@ export const logincontroller = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error.message);
     res.status(500).json({ message: "Login failed." });
+  }
+};
+
+export const forgotPasswordController = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email, verified: true });
+
+    if (!user) {
+      return res.status(404).json({ message: "Account not found or not verified." });
+    }
+
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const resetCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+    user.resetCode = resetCode;
+    user.resetCodeExpiresAt = resetCodeExpiresAt;
+    await user.save();
+
+    // Send email
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "askmobisoft55@gmail.com",
+        pass: "bitw mduw ylst tdgh"
+      }
+    });
+
+    const mailOptions = {
+      from: "askmobisoft55@gmail.com",
+      to: email,
+      subject: "Reset Your Password",
+      html: `
+        <h3>Hello ${user.firstname},</h3>
+        <p>Your password reset code is:</p>
+        <h2>${resetCode}</h2>
+        <p>This code is valid for 10 minutes.</p>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return res.status(200).json({ message: "Reset code sent to email." });
+
+  } catch (error) {
+    console.error("Forgot Password Error:", error);
+    return res.status(500).json({ message: "Failed to send reset code." });
+  }
+};
+
+export const resetPasswordController = async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+
+    const user = await User.findOne({
+      email,
+      resetCode: code,
+      resetCodeExpiresAt: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired reset code." });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetCode = undefined;
+    user.resetCodeExpiresAt = undefined;
+    await user.save();
+
+    return res.status(200).json({ message: "Password reset successfully." });
+
+  } catch (error) {
+    console.error("Reset Password Error:", error);
+    return res.status(500).json({ message: "Failed to reset password." });
   }
 };

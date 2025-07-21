@@ -182,13 +182,16 @@ export const logincontroller = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    res.status(200).json({ 
-      message: "Login successful.",
-      user: {
-        email: loginuser.email,
-        verified: loginuser.verified
-      }
-    });
+ res.status(200).json({ 
+  message: "Login successful.",
+  user: {
+    email: loginuser.email,
+    firstname: loginuser.firstname,
+    lastname: loginuser.lastname,
+    verified: loginuser.verified
+  }
+});
+
   } catch (error) {
     console.error("Login error:", error.message);
     res.status(500).json({ message: "Login failed." });

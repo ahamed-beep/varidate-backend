@@ -69,10 +69,12 @@ export const signupcontroller = async (req, res) => {
 
     await transporter.sendMail(mailOptions);
 
-    return res.status(200).json({ 
-      message: "Verification code sent to email.",
-      email: user.email // Include email in response for client-side use
-    });
+  return res.status(200).json({ 
+  message: "Verification code sent to email.",
+  email: user.email,
+  id: user._id // 👈 send user ID as well
+});
+
 
   } catch (err) {
     console.error("Signup Error:", err);
@@ -185,6 +187,7 @@ export const logincontroller = async (req, res) => {
  res.status(200).json({ 
   message: "Login successful.",
   user: {
+     id: loginuser._id,
     email: loginuser.email,
     firstname: loginuser.firstname,
     lastname: loginuser.lastname,
@@ -272,3 +275,8 @@ export const resetPasswordController = async (req, res) => {
     return res.status(500).json({ message: "Failed to reset password." });
   }
 };
+
+
+
+
+

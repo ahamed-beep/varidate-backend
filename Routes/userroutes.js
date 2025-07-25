@@ -8,7 +8,7 @@ import {
   forgotPasswordController,
   resetPasswordController
 } from '../Controller/usercontroller.js';
-import { createProfile } from '../Controller/personalprofilecontroller.js';
+import { createProfile, getallprofiledata, getProfileById, getPublicProfiles, updateAllBadgeScores } from '../Controller/personalprofilecontroller.js';
 
 const userroutes = express.Router();
 
@@ -38,47 +38,49 @@ const upload = multer({
 });
 
 // 🔐 Auth routes
-userroutes.post('/signup', signupcontroller);
+userroutes.post('/post', signupcontroller);
 userroutes.post('/login', logincontroller);
 userroutes.post('/verify-code', verifyCodeController);
 userroutes.post('/resend-code', resendVerificationCode);
 userroutes.post('/forgot-password', forgotPasswordController);
 userroutes.post('/reset-password', resetPasswordController);
 
+userroutes.get('/profile/:userId', getallprofiledata);
+
+
 // 📝 Profile submission route
 userroutes.post(
   '/profile',
   upload.fields([
     { name: 'resume', maxCount: 1 },
-    { name: 'cnicFile', maxCount: 1 },
-    { name: 'degreeFiles', maxCount: 5 },
-    { name: 'experienceFiles', maxCount: 3 }
+    { name: 'profilePicture', maxCount: 1 },
+    { name: 'degreeFiles', maxCount: 10 },
+    { name: 'experienceFiles', maxCount: 10 },
   ]),
   (err, req, res, next) => {
-    console.log('🗂️ Uploaded files:', req.files);  // ✅ Check what got uploaded
-    console.log('📨 Body:', req.body);             // ✅ Check form fields
-
-    if (err instanceof multer.MulterError) {
-      console.error("📛 Multer error:", err);
+    if (err instanceof multer.MulterError || err) {
       return res.status(400).json({
         success: false,
-        message: err.code === 'LIMIT_FILE_SIZE'
-          ? 'File size too large'
-          : err.code === 'LIMIT_FILE_COUNT'
-            ? 'Too many files uploaded'
-            : 'File upload error (multer)'
-      });
-    } else if (err) {
-      console.error("💥 Non-Multer file upload error:", err);
-      return res.status(400).json({
-        success: false,
-        message: err.message || 'File upload failed'
+        message: err.message || 'File upload error',
       });
     }
-
-    next();
+    next(); // ✅ Proceed to controller
   },
   createProfile
 );
 
+userroutes.get('/profile', getPublicProfiles);
+userroutes.get('/profiledetail/:id', getProfileById);
+// Update the existing route
+userroutes.patch('/update-badge-score/:id', updateAllBadgeScores);
+
+
+
+
+
+
+
+
+
 export default userroutes;
+

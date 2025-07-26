@@ -8,7 +8,7 @@ import {
   forgotPasswordController,
   resetPasswordController
 } from '../Controller/usercontroller.js';
-import { createProfile, getallprofiledata, getProfileById, getPublicProfiles, updateAllBadgeScores } from '../Controller/personalprofilecontroller.js';
+import { createProfile, getallprofiledata, getProfileById, getProfilePicture, getPublicProfiles, updateAllBadgeScores } from '../Controller/personalprofilecontroller.js';
 
 const userroutes = express.Router();
 
@@ -52,24 +52,17 @@ userroutes.get('/profile/:userId', getallprofiledata);
 userroutes.post(
   '/profile',
   upload.fields([
-    { name: 'resume', maxCount: 1 },
     { name: 'profilePicture', maxCount: 1 },
-    { name: 'degreeFiles', maxCount: 10 },
-    { name: 'experienceFiles', maxCount: 10 },
+    { name: 'resume', maxCount: 1 },
+    { name: 'education[0][degreeFile]', maxCount: 1 },
+    { name: 'experience[0][experienceFile]', maxCount: 1 }
   ]),
-  (err, req, res, next) => {
-    if (err instanceof multer.MulterError || err) {
-      return res.status(400).json({
-        success: false,
-        message: err.message || 'File upload error',
-      });
-    }
-    next(); // ✅ Proceed to controller
-  },
   createProfile
 );
 
 userroutes.get('/profile', getPublicProfiles);
+userroutes.get('/:userId/picture', getProfilePicture);
+
 userroutes.get('/profiledetail/:id', getProfileById);
 // Update the existing route
 userroutes.patch('/update-badge-score/:id', updateAllBadgeScores);

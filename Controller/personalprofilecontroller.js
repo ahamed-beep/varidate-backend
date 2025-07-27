@@ -130,19 +130,22 @@ import _ from "lodash";
 //   }
 // };
 
+
+
 export const createProfile = async (req, res) => {
   try {
-    // 1. Upload all files first
-    const profilePicture = req.files?.profilePicture?.[0] 
-      ? await uploadToCloudinary(req.files.profilePicture[0].buffer, 'profile_images') 
-      : null;
-    
-    const resume = req.files?.resume?.[0] 
-      ? await uploadToCloudinary(req.files.resume[0].buffer, 'resumes') 
-      : null;
+    // 1. Upload all main files first
+    const [profilePicture, resume] = await Promise.all([
+      req.files?.profilePicture?.[0] 
+        ? uploadToCloudinary(req.files.profilePicture[0].buffer, 'profile_images') 
+        : null,
+      req.files?.resume?.[0] 
+        ? uploadToCloudinary(req.files.resume[0].buffer, 'resumes') 
+        : null
+    ]);
 
-    // 2. Process education array
-    const education = req.body.education?.map(async (edu, index) => {
+    // 2. Process education array with proper visibility handling
+    const educationPromises = req.body.education?.map(async (edu, index) => {
       const degreeFile = req.files?.[`education[${index}][degreeFile]`]?.[0]
         ? await uploadToCloudinary(
             req.files[`education[${index}][degreeFile]`][0].buffer,
@@ -150,37 +153,45 @@ export const createProfile = async (req, res) => {
           )
         : null;
 
+      // Extract visibility fields from request body
+      const degreeTitleVisibility = edu.degreeTitleVisibility || 'Public';
+      const instituteVisibility = edu.instituteVisibility || 'Public';
+      const websiteVisibility = edu.websiteVisibility || 'Public';
+      const startDateVisibility = edu.startDateVisibility || 'Public';
+      const endDateVisibility = edu.endDateVisibility || 'Public';
+      const degreeFileVisibility = edu.degreeFileVisibility || 'Public';
+
       return {
         degreeTitle: edu.degreeTitle,
+        degreeTitleVisibility,
         institute: edu.institute,
+        instituteVisibility,
         website: edu.website,
+        websiteVisibility,
         startDate: new Date(edu.startDate),
+        startDateVisibility,
         endDate: new Date(edu.endDate),
+        endDateVisibility,
         degreeFile,
-        degreeTitleVisibility: "Public",
+        degreeFileVisibility,
+        verificationLevel: "Silver",
         degreeTitleBadge: "Black",
         degreeTitleBadgeScore: 0,
-        instituteVisibility: "Public",
         instituteBadge: "Black",
         instituteBadgeScore: 0,
-        startDateVisibility: "Public",
         startDateBadge: "Black",
         startDateBadgeScore: 0,
-        endDateVisibility: "Public",
         endDateBadge: "Black",
         endDateBadgeScore: 0,
-        verificationLevel: "Silver",
-        degreeFileVisibility: "Public",
         degreeFileBadge: "Black",
         degreeFileBadgeScore: 0,
-        websiteVisibility: "Public",
         websiteBadge: "Black",
         websiteBadgeScore: 0
       };
     }) || [];
 
-    // 3. Process experience array
-    const experience = req.body.experience?.map(async (exp, index) => {
+    // 3. Process experience array with proper visibility handling
+    const experiencePromises = req.body.experience?.map(async (exp, index) => {
       const experienceFile = req.files?.[`experience[${index}][experienceFile]`]?.[0]
         ? await uploadToCloudinary(
             req.files[`experience[${index}][experienceFile]`][0].buffer,
@@ -188,121 +199,127 @@ export const createProfile = async (req, res) => {
           )
         : null;
 
+      // Extract visibility fields from request body
+      const jobTitleVisibility = exp.jobTitleVisibility || 'Public';
+      const companyVisibility = exp.companyVisibility || 'Public';
+      const websiteVisibility = exp.websiteVisibility || 'Public';
+      const startDateVisibility = exp.startDateVisibility || 'Public';
+      const endDateVisibility = exp.endDateVisibility || 'Public';
+      const jobFunctionsVisibility = exp.jobFunctionsVisibility || 'Public';
+      const industryVisibility = exp.industryVisibility || 'Public';
+      const experienceFileVisibility = exp.experienceFileVisibility || 'Public';
+
       return {
         jobTitle: exp.jobTitle,
+        jobTitleVisibility,
         company: exp.company,
+        companyVisibility,
         website: exp.website,
+        websiteVisibility,
         startDate: new Date(exp.startDate),
+        startDateVisibility,
         endDate: new Date(exp.endDate),
+        endDateVisibility,
         jobFunctions: exp.jobFunctions || [],
+        jobFunctionsVisibility,
         industry: exp.industry,
+        industryVisibility,
         experienceFile,
-        jobTitleVisibility: "Public",
+        experienceFileVisibility,
+        verificationLevel: "Silver",
         jobTitleBadge: "Black",
         jobTitleBadgeScore: 0,
-        companyVisibility: "Public",
         companyBadge: "Black",
         companyBadgeScore: 0,
-        startDateVisibility: "Public",
         startDateBadge: "Black",
         startDateBadgeScore: 0,
-        endDateVisibility: "Public",
         endDateBadge: "Black",
         endDateBadgeScore: 0,
-        verificationLevel: "Silver",
-        experienceFileVisibility: "Public",
-        experienceFileBadge: "Black",
-        experienceFileBadgeScore: 0,
-        jobFunctionsVisibility: "Public",
         jobFunctionsBadge: "Black",
         jobFunctionsBadgeScore: 0,
-        industryVisibility: "Public",
         industryBadge: "Black",
         industryBadgeScore: 0,
-        websiteVisibility: "Public",
         websiteBadge: "Black",
-        websiteBadgeScore: 0
+        websiteBadgeScore: 0,
+        experienceFileBadge: "Black",
+        experienceFileBadgeScore: 0
       };
     }) || [];
 
     // Wait for all async operations to complete
-    const [processedEducation, processedExperience] = await Promise.all([
-      Promise.all(education),
-      Promise.all(experience)
+    const [education, experience] = await Promise.all([
+      Promise.all(educationPromises),
+      Promise.all(experiencePromises)
     ]);
 
     // 4. Prepare the complete profile data
     const profileData = {
       userId: req.body.userId,
       name: req.body.name,
+      nameVisibility: req.body.nameVisibility || 'Public',
       fatherName: req.body.fatherName,
+      fatherNameVisibility: req.body.fatherNameVisibility || 'Public',
       gender: req.body.gender,
+      genderVisibility: req.body.genderVisibility || 'Public',
       dob: new Date(req.body.dob),
+      dobVisibility: req.body.dobVisibility || 'Public',
       cnic: req.body.cnic,
+      cnicVisibility: req.body.cnicVisibility || 'Public',
       mobile: req.body.mobile,
+      mobileVisibility: req.body.mobileVisibility || 'Public',
       email: req.body.email,
+      emailVisibility: req.body.emailVisibility || 'Public',
       city: req.body.city,
+      cityVisibility: req.body.cityVisibility || 'Public',
       country: req.body.country,
+      countryVisibility: req.body.countryVisibility || 'Public',
       nationality: req.body.nationality,
+      nationalityVisibility: req.body.nationalityVisibility || 'Public',
       residentStatus: req.body.residentStatus,
+      residentStatusVisibility: req.body.residentStatusVisibility || 'Public',
       shiftPreferences: Array.isArray(req.body.shiftPreferences) 
         ? req.body.shiftPreferences 
         : [].concat(req.body.shiftPreferences),
+      shiftPreferencesVisibility: req.body.shiftPreferencesVisibility || 'Public',
       workAuthorization: Array.isArray(req.body.workAuthorization) 
         ? req.body.workAuthorization 
         : [].concat(req.body.workAuthorization),
+      workAuthorizationVisibility: req.body.workAuthorizationVisibility || 'Public',
       profilePicture,
+      profilePictureVisibility: req.body.profilePictureVisibility || 'Public',
       resume,
-      education: processedEducation,
-      experience: processedExperience,
-      
-      // Default visibility and badge settings for personal info
-      nameVisibility: "Public",
+      resumeVisibility: req.body.resumeVisibility || 'Public',
+      education,
+      experience,
+      // Default badge settings for personal fields
       nameBadge: "Black",
       nameBadgeScore: 0,
-      fatherNameVisibility: "Public",
       fatherNameBadge: "Black",
       fatherNameBadgeScore: 0,
-      genderVisibility: "Public",
       genderBadge: "Black",
       genderBadgeScore: 0,
-      dobVisibility: "Public",
       dobBadge: "Black",
       dobBadgeScore: 0,
-      cnicVisibility: "Public",
       cnicBadge: "Black",
       cnicBadgeScore: 0,
-      profilePictureVisibility: "Public",
       profilePictureBadge: "Black",
       profilePictureBadgeScore: 0,
-      mobileVisibility: "Public",
       mobileBadge: "Black",
       mobileBadgeScore: 0,
-      emailVisibility: "Public",
       emailBadge: "Black",
       emailBadgeScore: 0,
-      addressVisibility: "Public",
-      addressBadge: "Black",
-      addressBadgeScore: 0,
-      cityVisibility: "Public",
       cityBadge: "Black",
       cityBadgeScore: 0,
-      countryVisibility: "Public",
       countryBadge: "Black",
       countryBadgeScore: 0,
-      nationalityVisibility: "Public",
       nationalityBadge: "Black",
       nationalityBadgeScore: 0,
-      residentStatusVisibility: "Public",
       residentStatusBadge: "Black",
       residentStatusBadgeScore: 0,
-      shiftPreferencesVisibility: "Public",
       shiftPreferencesBadge: "Black",
       shiftPreferencesBadgeScore: 0,
-      workAuthorizationVisibility: "Public",
       workAuthorizationBadge: "Black",
       workAuthorizationBadgeScore: 0,
-      resumeVisibility: "Public",
       resumeBadge: "Black",
       resumeBadgeScore: 0
     };
@@ -341,7 +358,6 @@ export const createProfile = async (req, res) => {
     });
   }
 };
-
 
 export const getPublicProfiles = async (req, res) => {
   try {

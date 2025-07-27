@@ -2,178 +2,129 @@ import uploadToCloudinary from "../Middleware/Cloudinaryuploader.js";
 import mongoose from 'mongoose';
 import ProfileModel from "../Model/profilesubmission.js";
 import _ from "lodash";
-
-
-
-
-// export const createProfile = async (req, res) => {
-//   try {
-//     const {
-//       name,
-//       email,
-//       cnic,
-//       fatherName,
-//       dob,
-//       gender,
-//       mobile,
-//       address,
-//       city,
-//       country,
-//       userId,
-//       shiftPreferences = [], // 🟢 Default to empty array if not present
-//       workAuthorization = [],
-//         jobFunctions = [] 
-//     } = req.body;
-
-//     if (!userId) {
-//       return res.status(400).json({ message: 'userId is required.' });
-//     }
-
-//     // Parse strings to arrays if frontend sends them as comma-separated strings
-//     const parsedShiftPreferences = Array.isArray(shiftPreferences)
-//       ? shiftPreferences
-//       : typeof shiftPreferences === 'string'
-//       ? shiftPreferences.split(',').map((item) => item.trim())
-//       : [];
-
-//     const parsedWorkAuthorization = Array.isArray(workAuthorization)
-//       ? workAuthorization
-//       : typeof workAuthorization === 'string'
-//       ? workAuthorization.split(',').map((item) => item.trim())
-//       : [];
-      
-//   const extractedJobFunctions = Object.entries(req.body)
-//   .filter(([key]) => key.startsWith('exp-jobFunctions-'))
-//   .map(([_, value]) =>
-//     Array.isArray(value)
-//       ? value
-//       : typeof value === 'string'
-//       ? value.split(',').map((v) => v.trim())
-//       : []
-//   );
-
-//     // ✅ Upload profile image (optional)
-//     const profilePicFile = req.files?.profilePicture?.[0];
-//     const profileImageUrl = profilePicFile
-//       ? await uploadToCloudinary(profilePicFile.buffer, 'profile_images')
-//       : null;
-
-//     // ✅ Upload resume (optional)
-//     const resumeFile = req.files?.resume?.[0];
-//     const pdfUrl = resumeFile
-//       ? await uploadToCloudinary(resumeFile.buffer, 'resumes')
-//       : null;
-
-//     // ✅ Upload education documents
-//     const degreeFiles = await Promise.all(
-//       (req.files?.degreeFiles || []).map(async (file) => {
-//         const url = await uploadToCloudinary(file.buffer, 'education_files');
-//         return {
-//           degreeTitle: file.originalname,
-//           degreeFile: url,
-//         };
-//       })
-//     );
-
-//     // ✅ Upload experience documents
-//    const experienceFiles = await Promise.all(
-//   (req.files?.experienceFiles || []).map(async (file, index) => {
-//     const url = await uploadToCloudinary(file.buffer, 'experience_files');
-
-//     return {
-//       jobTitle: file.originalname,
-//       fileUrl: url,
-//       jobFunctions: Array.isArray(parsedJobFunctions?.[index])
-//         ? parsedJobFunctions[index]
-//         : [],
-//     };
-//   })
-// );
-
-
-//     // ✅ Create and Save Profile
-//     const profile = new ProfileModel({
-//       userId,
-//       name,
-//       fatherName,
-//       gender,
-//       dob,
-//       cnic,
-//       email,
-//       mobile,
-//       address,
-//       city,
-//       country,
-//       profileImageUrl,
-//       pdfUrl,
-//       shiftPreferences: parsedShiftPreferences,
-//       workAuthorization: parsedWorkAuthorization,
-//       education: degreeFiles,
-//       experience: experienceFiles,
-//     });
-
-//     await profile.save();
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Profile created successfully.",
-//       data: profile,
-//     });
-
-//   } catch (error) {
-//     console.error("🔥 Profile creation error:", error.message);
-//     res.status(500).json({
-//       success: false,
-//       message: "Failed to create profile.",
-//       error: error.message,
-//     });
-//   }
-// };
+import fs from 'fs';
+import path from 'path';
 
 
 
 export const createProfile = async (req, res) => {
   try {
-    // 1. Upload all main files first
+    console.log('Received files:', req.files);
+    console.log('Received body:', req.body);
+
+    // Validate required fields
+    const requiredFields = [
+      'userId', 'name', 'mobile', 'email', 'cnic', 'fatherName',
+      'city', 'country', 'gender', 'dob', 'nationality',
+      'residentStatus', 'maritalStatus'
+    ];
+    
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')}`
+      });
+    }
+
+    // Process main files
     const [profilePicture, resume] = await Promise.all([
-      req.files?.profilePicture?.[0] 
-        ? uploadToCloudinary(req.files.profilePicture[0].buffer, 'profile_images') 
+      req.files?.profilePicture
+        ? await uploadToCloudinary(req.files.profilePicture.path, 'profile_images')
         : null,
-      req.files?.resume?.[0] 
-        ? uploadToCloudinary(req.files.resume[0].buffer, 'resumes') 
+      req.files?.resume
+        ? await uploadToCloudinary(req.files.resume.path, 'resumes')
         : null
     ]);
 
-    // 2. Process education array with proper visibility handling
-    const educationPromises = req.body.education?.map(async (edu, index) => {
-      const degreeFile = req.files?.[`education[${index}][degreeFile]`]?.[0]
+    if (!profilePicture || !resume) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile picture and resume are required'
+      });
+    }
+
+    // Process shiftPreferences array - FIXED
+    let shiftPreferences = [];
+    if (req.body['shiftPreferences[0]']) {
+      // Handle array fields sent as indexed parameters
+      shiftPreferences = Object.keys(req.body)
+        .filter(key => key.startsWith('shiftPreferences['))
+        .sort((a, b) => {
+          const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
+          const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
+          return indexA - indexB;
+        })
+        .map(key => req.body[key]);
+    } else if (req.body.shiftPreferences && Array.isArray(req.body.shiftPreferences)) {
+      shiftPreferences = req.body.shiftPreferences;
+    }
+
+    // Process workAuthorization array - FIXED
+    let workAuthorization = [];
+    if (req.body['workAuthorization[0]']) {
+      workAuthorization = Object.keys(req.body)
+        .filter(key => key.startsWith('workAuthorization['))
+        .sort((a, b) => {
+          const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
+          const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
+          return indexA - indexB;
+        })
+        .map(key => req.body[key]);
+    } else if (req.body.workAuthorization && Array.isArray(req.body.workAuthorization)) {
+      workAuthorization = req.body.workAuthorization;
+    }
+
+    // Process education array
+    const education = [];
+    if (!req.body.education || (Array.isArray(req.body.education) && req.body.education.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one education entry is required'
+      });
+    }
+
+    const educationArray = Array.isArray(req.body.education) 
+      ? req.body.education 
+      : [req.body.education];
+
+    for (const [index, edu] of educationArray.entries()) {
+      if (!edu) continue;
+      
+      if (!edu.degreeTitle || !edu.institute || !edu.startDate) {
+        return res.status(400).json({
+          success: false,
+          message: `Education entry ${index + 1} is missing required fields`
+        });
+      }
+
+      const degreeFile = req.files?.education?.[index]?.degreeFile
         ? await uploadToCloudinary(
-            req.files[`education[${index}][degreeFile]`][0].buffer,
+            req.files.education[index].degreeFile.path,
             'education_files'
           )
         : null;
 
-      // Extract visibility fields from request body
-      const degreeTitleVisibility = edu.degreeTitleVisibility || 'Public';
-      const instituteVisibility = edu.instituteVisibility || 'Public';
-      const websiteVisibility = edu.websiteVisibility || 'Public';
-      const startDateVisibility = edu.startDateVisibility || 'Public';
-      const endDateVisibility = edu.endDateVisibility || 'Public';
-      const degreeFileVisibility = edu.degreeFileVisibility || 'Public';
+      if (!degreeFile) {
+        return res.status(400).json({
+          success: false,
+          message: `Degree file is required for education entry ${index + 1}`
+        });
+      }
 
-      return {
+      education.push({
         degreeTitle: edu.degreeTitle,
-        degreeTitleVisibility,
+        degreeTitleVisibility: 'Public',
         institute: edu.institute,
-        instituteVisibility,
-        website: edu.website,
-        websiteVisibility,
+        instituteVisibility: 'Public',
+        website: edu.website || '',
+        websiteVisibility: 'Public',
         startDate: new Date(edu.startDate),
-        startDateVisibility,
-        endDate: new Date(edu.endDate),
-        endDateVisibility,
+        startDateVisibility: 'Public',
+        endDate: edu.endDate ? new Date(edu.endDate) : null,
+        endDateVisibility: 'Public',
         degreeFile,
-        degreeFileVisibility,
+        degreeFileVisibility: 'Public',
         verificationLevel: "Silver",
         degreeTitleBadge: "Black",
         degreeTitleBadgeScore: 0,
@@ -187,45 +138,79 @@ export const createProfile = async (req, res) => {
         degreeFileBadgeScore: 0,
         websiteBadge: "Black",
         websiteBadgeScore: 0
-      };
-    }) || [];
+      });
+    }
 
-    // 3. Process experience array with proper visibility handling
-    const experiencePromises = req.body.experience?.map(async (exp, index) => {
-      const experienceFile = req.files?.[`experience[${index}][experienceFile]`]?.[0]
+    // Process experience array
+    const experience = [];
+    if (!req.body.experience || (Array.isArray(req.body.experience) && req.body.experience.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one experience entry is required'
+      });
+    }
+
+    const experienceArray = Array.isArray(req.body.experience) 
+      ? req.body.experience 
+      : [req.body.experience];
+
+    for (const [index, exp] of experienceArray.entries()) {
+      if (!exp) continue;
+      
+      if (!exp.jobTitle || !exp.company || !exp.industry || !exp.startDate) {
+        return res.status(400).json({
+          success: false,
+          message: `Experience entry ${index + 1} is missing required fields`
+        });
+      }
+
+      const experienceFile = req.files?.experience?.[index]?.experienceFile
         ? await uploadToCloudinary(
-            req.files[`experience[${index}][experienceFile]`][0].buffer,
+            req.files.experience[index].experienceFile.path,
             'experience_files'
           )
         : null;
 
-      // Extract visibility fields from request body
-      const jobTitleVisibility = exp.jobTitleVisibility || 'Public';
-      const companyVisibility = exp.companyVisibility || 'Public';
-      const websiteVisibility = exp.websiteVisibility || 'Public';
-      const startDateVisibility = exp.startDateVisibility || 'Public';
-      const endDateVisibility = exp.endDateVisibility || 'Public';
-      const jobFunctionsVisibility = exp.jobFunctionsVisibility || 'Public';
-      const industryVisibility = exp.industryVisibility || 'Public';
-      const experienceFileVisibility = exp.experienceFileVisibility || 'Public';
+      if (!experienceFile) {
+        return res.status(400).json({
+          success: false,
+          message: `Experience file is required for experience entry ${index + 1}`
+        });
+      }
 
-      return {
+      // Handle jobFunctions array - FIXED
+      let jobFunctions = [];
+      if (exp['jobFunctions][0'] || exp['jobFunctions][1']) {
+        // Handle array fields sent as indexed parameters
+        jobFunctions = Object.keys(exp)
+          .filter(key => key.startsWith('jobFunctions]['))
+          .sort((a, b) => {
+            const indexA = parseInt(a.match(/\]\[(\d+)/)[1]);
+            const indexB = parseInt(b.match(/\]\[(\d+)/)[1]);
+            return indexA - indexB;
+          })
+          .map(key => exp[key]);
+      } else if (exp.jobFunctions && Array.isArray(exp.jobFunctions)) {
+        jobFunctions = exp.jobFunctions;
+      }
+
+      experience.push({
         jobTitle: exp.jobTitle,
-        jobTitleVisibility,
+        jobTitleVisibility: 'Public',
         company: exp.company,
-        companyVisibility,
-        website: exp.website,
-        websiteVisibility,
+        companyVisibility: 'Public',
+        website: exp.website || '',
+        websiteVisibility: 'Public',
         startDate: new Date(exp.startDate),
-        startDateVisibility,
-        endDate: new Date(exp.endDate),
-        endDateVisibility,
-        jobFunctions: exp.jobFunctions || [],
-        jobFunctionsVisibility,
+        startDateVisibility: 'Public',
+        endDate: exp.endDate ? new Date(exp.endDate) : null,
+        endDateVisibility: 'Public',
+        jobFunctions,
+        jobFunctionsVisibility: 'Public',
         industry: exp.industry,
-        industryVisibility,
+        industryVisibility: 'Public',
         experienceFile,
-        experienceFileVisibility,
+        experienceFileVisibility: 'Public',
         verificationLevel: "Silver",
         jobTitleBadge: "Black",
         jobTitleBadgeScore: 0,
@@ -243,117 +228,134 @@ export const createProfile = async (req, res) => {
         websiteBadgeScore: 0,
         experienceFileBadge: "Black",
         experienceFileBadgeScore: 0
-      };
-    }) || [];
-
-    // Wait for all async operations to complete
-    const [education, experience] = await Promise.all([
-      Promise.all(educationPromises),
-      Promise.all(experiencePromises)
-    ]);
-
-    // 4. Prepare the complete profile data
-    const profileData = {
-      userId: req.body.userId,
-      name: req.body.name,
-      nameVisibility: req.body.nameVisibility || 'Public',
-      fatherName: req.body.fatherName,
-      fatherNameVisibility: req.body.fatherNameVisibility || 'Public',
-      gender: req.body.gender,
-      genderVisibility: req.body.genderVisibility || 'Public',
-      dob: new Date(req.body.dob),
-      dobVisibility: req.body.dobVisibility || 'Public',
-      cnic: req.body.cnic,
-      cnicVisibility: req.body.cnicVisibility || 'Public',
-      mobile: req.body.mobile,
-      mobileVisibility: req.body.mobileVisibility || 'Public',
-      email: req.body.email,
-      emailVisibility: req.body.emailVisibility || 'Public',
-      city: req.body.city,
-      cityVisibility: req.body.cityVisibility || 'Public',
-      country: req.body.country,
-      countryVisibility: req.body.countryVisibility || 'Public',
-      nationality: req.body.nationality,
-      nationalityVisibility: req.body.nationalityVisibility || 'Public',
-      residentStatus: req.body.residentStatus,
-      residentStatusVisibility: req.body.residentStatusVisibility || 'Public',
-      shiftPreferences: Array.isArray(req.body.shiftPreferences) 
-        ? req.body.shiftPreferences 
-        : [].concat(req.body.shiftPreferences),
-      shiftPreferencesVisibility: req.body.shiftPreferencesVisibility || 'Public',
-      workAuthorization: Array.isArray(req.body.workAuthorization) 
-        ? req.body.workAuthorization 
-        : [].concat(req.body.workAuthorization),
-      workAuthorizationVisibility: req.body.workAuthorizationVisibility || 'Public',
-      profilePicture,
-      profilePictureVisibility: req.body.profilePictureVisibility || 'Public',
-      resume,
-      resumeVisibility: req.body.resumeVisibility || 'Public',
-      education,
-      experience,
-      // Default badge settings for personal fields
-      nameBadge: "Black",
-      nameBadgeScore: 0,
-      fatherNameBadge: "Black",
-      fatherNameBadgeScore: 0,
-      genderBadge: "Black",
-      genderBadgeScore: 0,
-      dobBadge: "Black",
-      dobBadgeScore: 0,
-      cnicBadge: "Black",
-      cnicBadgeScore: 0,
-      profilePictureBadge: "Black",
-      profilePictureBadgeScore: 0,
-      mobileBadge: "Black",
-      mobileBadgeScore: 0,
-      emailBadge: "Black",
-      emailBadgeScore: 0,
-      cityBadge: "Black",
-      cityBadgeScore: 0,
-      countryBadge: "Black",
-      countryBadgeScore: 0,
-      nationalityBadge: "Black",
-      nationalityBadgeScore: 0,
-      residentStatusBadge: "Black",
-      residentStatusBadgeScore: 0,
-      shiftPreferencesBadge: "Black",
-      shiftPreferencesBadgeScore: 0,
-      workAuthorizationBadge: "Black",
-      workAuthorizationBadgeScore: 0,
-      resumeBadge: "Black",
-      resumeBadgeScore: 0
-    };
-
-    // 5. Validate required fields
-    const requiredFields = [
-      'userId', 'name', 'fatherName', 'gender', 'dob', 'cnic',
-      'mobile', 'email', 'city', 'country', 'nationality',
-      'profilePicture', 'resume'
-    ];
-    
-    const missingFields = requiredFields.filter(field => !profileData[field]);
-    if (missingFields.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Missing required fields: ${missingFields.join(', ')}`
       });
     }
 
-    // 6. Create and save profile
-    const profile = new ProfileModel(profileData);
-    await profile.save();
+    // Prepare complete profile data with all fields
+    const profileData = {
+      userId: req.body.userId,
+      name: req.body.name,
+      nameVisibility: 'Public',
+      nameBadge: "Black",
+      nameBadgeScore: 0,
+      fatherName: req.body.fatherName,
+      fatherNameVisibility: 'Public',
+      fatherNameBadge: "Black",
+      fatherNameBadgeScore: 0,
+      gender: req.body.gender,
+      genderVisibility: 'Public',
+      genderBadge: "Black",
+      genderBadgeScore: 0,
+      dob: new Date(req.body.dob),
+      dobVisibility: 'Public',
+      dobBadge: "Black",
+      dobBadgeScore: 0,
+      cnic: req.body.cnic,
+      cnicVisibility: 'Public',
+      cnicBadge: "Black",
+      cnicBadgeScore: 0,
+      profilePicture,
+      profilePictureVisibility: 'Public',
+      profilePictureBadge: "Black",
+      profilePictureBadgeScore: 0,
+      mobile: req.body.mobile,
+      mobileVisibility: 'Public',
+      mobileBadge: "Black",
+      mobileBadgeScore: 0,
+      email: req.body.email,
+      emailVisibility: 'Public',
+      emailBadge: "Black",
+      emailBadgeScore: 0,
+      address: req.body.address || '',
+      addressVisibility: 'Public',
+      addressBadge: "Black",
+      addressBadgeScore: 0,
+      city: req.body.city,
+      cityVisibility: 'Public',
+      cityBadge: "Black",
+      cityBadgeScore: 0,
+      country: req.body.country,
+      countryVisibility: 'Public',
+      countryBadge: "Black",
+      countryBadgeScore: 0,
+      nationality: req.body.nationality,
+      nationalityVisibility: 'Public',
+      nationalityBadge: "Black",
+      nationalityBadgeScore: 0,
+      residentStatus: req.body.residentStatus,
+      residentStatusVisibility: 'Public',
+      residentStatusBadge: "Black",
+      residentStatusBadgeScore: 0,
+      maritalStatus: req.body.maritalStatus,
+      maritalStatusVisibility: 'Public',
+      maritalStatusBadge: "Black",
+      maritalStatusBadgeScore: 0,
+      shiftPreferences, // Now properly populated
+      shiftPreferencesVisibility: 'Public',
+      shiftPreferencesBadge: "Black",
+      shiftPreferencesBadgeScore: 0,
+      workLocationPreference: req.body.workLocationPreference || '',
+      workLocationPreferenceVisibility: 'Public',
+      workLocationPreferenceBadge: "Black",
+      workLocationPreferenceBadgeScore: 0,
+      workAuthorization, // Now properly populated
+      workAuthorizationVisibility: 'Public',
+      workAuthorizationBadge: "Black",
+      workAuthorizationBadgeScore: 0,
+      resume,
+      resumeVisibility: 'Public',
+      resumeBadge: "Black",
+      resumeBadgeScore: 0,
+      education,
+      experience, // Now includes properly populated jobFunctions
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    // Create or update profile
+    let profile;
+    if (req.body.profileId) {
+      profile = await ProfileModel.findByIdAndUpdate(
+        req.body.profileId,
+        profileData,
+        { new: true, runValidators: true }
+      );
+    } else {
+      profile = new ProfileModel(profileData);
+      await profile.save();
+    }
 
     res.status(201).json({
       success: true,
-      message: "Profile created successfully",
+      message: "Profile saved successfully",
       data: profile
     });
 
   } catch (error) {
     console.error("Profile creation error:", error);
+    
+    // Handle specific error types
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: messages
+      });
+    }
+
+    // Handle Cloudinary errors
+    if (error.message.includes('Cloudinary')) {
+      return res.status(400).json({
+        success: false,
+        message: "File upload error",
+        error: error.message
+      });
+    }
+
     res.status(500).json({
       success: false,
-      message: "Failed to create profile",
+      message: "Failed to save profile",
       error: error.message
     });
   }

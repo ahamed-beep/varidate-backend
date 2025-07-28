@@ -392,6 +392,261 @@ export const getProfileByUserId = async (req, res) => {
 
 // Add this to your personalprofilecontroller.js
 
+export const updateProfile = async (req, res) => {
+  try {
+    console.log('Received files:', req.files);
+    console.log('Received body:', req.body);
+
+    const { userId, profileId } = req.body;
+    
+    if (!userId || !profileId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and Profile ID are required'
+      });
+    }
+
+    // Find the existing profile
+    const existingProfile = await ProfileModel.findOne({ _id: profileId, userId });
+    
+    if (!existingProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Profile not found'
+      });
+    }
+
+    // Create an object to hold the updates
+    const updates = {
+      updatedAt: new Date()
+    };
+
+    // Process main files if provided
+    if (req.files?.profilePicture) {
+      updates.profilePicture = await uploadToCloudinary(req.files.profilePicture.path, 'profile_images');
+    }
+
+    if (req.files?.resume) {
+      updates.resume = await uploadToCloudinary(req.files.resume.path, 'resumes');
+    }
+
+    // Process personal information fields
+    const personalFields = [
+      'name', 'mobile', 'email', 'cnic', 'fatherName',
+      'city', 'country', 'gender', 'dob', 'nationality',
+      'residentStatus', 'maritalStatus', 'workLocationPreference'
+    ];
+
+    personalFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        if (field === 'dob' && req.body[field]) {
+          updates[field] = new Date(req.body[field]);
+        } else {
+          updates[field] = req.body[field];
+        }
+      }
+    });
+
+    // Process shiftPreferences if provided
+    if (req.body['shiftPreferences[0]'] || req.body.shiftPreferences) {
+      let shiftPreferences = [];
+      if (req.body['shiftPreferences[0]']) {
+        shiftPreferences = Object.keys(req.body)
+          .filter(key => key.startsWith('shiftPreferences['))
+          .sort((a, b) => {
+            const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
+            const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
+            return indexA - indexB;
+          })
+          .map(key => req.body[key]);
+      } else if (req.body.shiftPreferences && Array.isArray(req.body.shiftPreferences)) {
+        shiftPreferences = req.body.shiftPreferences;
+      }
+      updates.shiftPreferences = shiftPreferences;
+    }
+
+    // Process workAuthorization if provided
+    if (req.body['workAuthorization[0]'] || req.body.workAuthorization) {
+      let workAuthorization = [];
+      if (req.body['workAuthorization[0]']) {
+        workAuthorization = Object.keys(req.body)
+          .filter(key => key.startsWith('workAuthorization['))
+          .sort((a, b) => {
+            const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
+            const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
+            return indexA - indexB;
+          })
+          .map(key => req.body[key]);
+      } else if (req.body.workAuthorization && Array.isArray(req.body.workAuthorization)) {
+        workAuthorization = req.body.workAuthorization;
+      }
+      updates.workAuthorization = workAuthorization;
+    }
+
+    // Process education if provided
+    if (req.body.education) {
+      const educationArray = Array.isArray(req.body.education) 
+        ? req.body.education 
+        : [req.body.education];
+
+      updates.education = await Promise.all(educationArray.map(async (edu, index) => {
+        const educationDoc = existingProfile.education.id(edu.id) || {};
+        
+        const degreeFile = req.files?.education?.[index]?.degreeFile
+          ? await uploadToCloudinary(
+              req.files.education[index].degreeFile.path,
+              'education_files'
+            )
+          : educationDoc.degreeFile;
+
+        return {
+          _id: edu.id || educationDoc._id || new mongoose.Types.ObjectId(),
+          degreeTitle: edu.degreeTitle || educationDoc.degreeTitle,
+          institute: edu.institute || educationDoc.institute,
+          startDate: edu.startDate ? new Date(edu.startDate) : educationDoc.startDate,
+          endDate: edu.endDate ? new Date(edu.endDate) : educationDoc.endDate,
+          website: edu.website || educationDoc.website,
+          degreeFile,
+          // Keep existing visibility and badge settings if not provided
+          degreeTitleVisibility: edu.degreeTitleVisibility || educationDoc.degreeTitleVisibility || 'Public',
+          instituteVisibility: edu.instituteVisibility || educationDoc.instituteVisibility || 'Public',
+          startDateVisibility: edu.startDateVisibility || educationDoc.startDateVisibility || 'Public',
+          endDateVisibility: edu.endDateVisibility || educationDoc.endDateVisibility || 'Public',
+          websiteVisibility: edu.websiteVisibility || educationDoc.websiteVisibility || 'Public',
+          degreeFileVisibility: edu.degreeFileVisibility || educationDoc.degreeFileVisibility || 'Public',
+          verificationLevel: edu.verificationLevel || educationDoc.verificationLevel || 'Silver',
+          // Badges - preserve existing if not provided
+          degreeTitleBadge: edu.degreeTitleBadge || educationDoc.degreeTitleBadge || 'Black',
+          degreeTitleBadgeScore: edu.degreeTitleBadgeScore || educationDoc.degreeTitleBadgeScore || 0,
+          instituteBadge: edu.instituteBadge || educationDoc.instituteBadge || 'Black',
+          instituteBadgeScore: edu.instituteBadgeScore || educationDoc.instituteBadgeScore || 0,
+          startDateBadge: edu.startDateBadge || educationDoc.startDateBadge || 'Black',
+          startDateBadgeScore: edu.startDateBadgeScore || educationDoc.startDateBadgeScore || 0,
+          endDateBadge: edu.endDateBadge || educationDoc.endDateBadge || 'Black',
+          endDateBadgeScore: edu.endDateBadgeScore || educationDoc.endDateBadgeScore || 0,
+          degreeFileBadge: edu.degreeFileBadge || educationDoc.degreeFileBadge || 'Black',
+          degreeFileBadgeScore: edu.degreeFileBadgeScore || educationDoc.degreeFileBadgeScore || 0,
+          websiteBadge: edu.websiteBadge || educationDoc.websiteBadge || 'Black',
+          websiteBadgeScore: edu.websiteBadgeScore || educationDoc.websiteBadgeScore || 0
+        };
+      }));
+    }
+
+    // Process experience if provided
+    if (req.body.experience) {
+      const experienceArray = Array.isArray(req.body.experience) 
+        ? req.body.experience 
+        : [req.body.experience];
+
+      updates.experience = await Promise.all(experienceArray.map(async (exp, index) => {
+        const experienceDoc = existingProfile.experience.id(exp.id) || {};
+        
+        const experienceFile = req.files?.experience?.[index]?.experienceFile
+          ? await uploadToCloudinary(
+              req.files.experience[index].experienceFile.path,
+              'experience_files'
+            )
+          : experienceDoc.experienceFile;
+
+        // Handle jobFunctions array
+        let jobFunctions = [];
+        if (exp['jobFunctions][0'] || exp['jobFunctions][1']) {
+          jobFunctions = Object.keys(exp)
+            .filter(key => key.startsWith('jobFunctions]['))
+            .sort((a, b) => {
+              const indexA = parseInt(a.match(/\]\[(\d+)/)[1]);
+              const indexB = parseInt(b.match(/\]\[(\d+)/)[1]);
+              return indexA - indexB;
+            })
+            .map(key => exp[key]);
+        } else if (exp.jobFunctions && Array.isArray(exp.jobFunctions)) {
+          jobFunctions = exp.jobFunctions;
+        } else {
+          jobFunctions = experienceDoc.jobFunctions || [];
+        }
+
+        return {
+          _id: exp.id || experienceDoc._id || new mongoose.Types.ObjectId(),
+          jobTitle: exp.jobTitle || experienceDoc.jobTitle,
+          company: exp.company || experienceDoc.company,
+          startDate: exp.startDate ? new Date(exp.startDate) : experienceDoc.startDate,
+          endDate: exp.endDate ? new Date(exp.endDate) : experienceDoc.endDate,
+          website: exp.website || experienceDoc.website,
+          experienceFile,
+          jobFunctions,
+          industry: exp.industry || experienceDoc.industry,
+          // Keep existing visibility and badge settings if not provided
+          jobTitleVisibility: exp.jobTitleVisibility || experienceDoc.jobTitleVisibility || 'Public',
+          companyVisibility: exp.companyVisibility || experienceDoc.companyVisibility || 'Public',
+          startDateVisibility: exp.startDateVisibility || experienceDoc.startDateVisibility || 'Public',
+          endDateVisibility: exp.endDateVisibility || experienceDoc.endDateVisibility || 'Public',
+          websiteVisibility: exp.websiteVisibility || experienceDoc.websiteVisibility || 'Public',
+          experienceFileVisibility: exp.experienceFileVisibility || experienceDoc.experienceFileVisibility || 'Public',
+          jobFunctionsVisibility: exp.jobFunctionsVisibility || experienceDoc.jobFunctionsVisibility || 'Public',
+          industryVisibility: exp.industryVisibility || experienceDoc.industryVisibility || 'Public',
+          verificationLevel: exp.verificationLevel || experienceDoc.verificationLevel || 'Silver',
+          // Badges - preserve existing if not provided
+          jobTitleBadge: exp.jobTitleBadge || experienceDoc.jobTitleBadge || 'Black',
+          jobTitleBadgeScore: exp.jobTitleBadgeScore || experienceDoc.jobTitleBadgeScore || 0,
+          companyBadge: exp.companyBadge || experienceDoc.companyBadge || 'Black',
+          companyBadgeScore: exp.companyBadgeScore || experienceDoc.companyBadgeScore || 0,
+          startDateBadge: exp.startDateBadge || experienceDoc.startDateBadge || 'Black',
+          startDateBadgeScore: exp.startDateBadgeScore || experienceDoc.startDateBadgeScore || 0,
+          endDateBadge: exp.endDateBadge || experienceDoc.endDateBadge || 'Black',
+          endDateBadgeScore: exp.endDateBadgeScore || experienceDoc.endDateBadgeScore || 0,
+          jobFunctionsBadge: exp.jobFunctionsBadge || experienceDoc.jobFunctionsBadge || 'Black',
+          jobFunctionsBadgeScore: exp.jobFunctionsBadgeScore || experienceDoc.jobFunctionsBadgeScore || 0,
+          industryBadge: exp.industryBadge || experienceDoc.industryBadge || 'Black',
+          industryBadgeScore: exp.industryBadgeScore || experienceDoc.industryBadgeScore || 0,
+          websiteBadge: exp.websiteBadge || experienceDoc.websiteBadge || 'Black',
+          websiteBadgeScore: exp.websiteBadgeScore || experienceDoc.websiteBadgeScore || 0,
+          experienceFileBadge: exp.experienceFileBadge || experienceDoc.experienceFileBadge || 'Black',
+          experienceFileBadgeScore: exp.experienceFileBadgeScore || experienceDoc.experienceFileBadgeScore || 0
+        };
+      }));
+    }
+
+    // Update the profile with only the provided fields
+    const updatedProfile = await ProfileModel.findByIdAndUpdate(
+      profileId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: updatedProfile
+    });
+
+  } catch (error) {
+    console.error("Profile update error:", error);
+    
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: messages
+      });
+    }
+
+    if (error.message.includes('Cloudinary')) {
+      return res.status(400).json({
+        success: false,
+        message: "File upload error",
+        error: error.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+      error: error.message
+    });
+  }
+};
+
 
 
 

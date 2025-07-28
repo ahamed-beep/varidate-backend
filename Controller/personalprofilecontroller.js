@@ -361,6 +361,40 @@ export const createProfile = async (req, res) => {
   }
 };
 
+
+
+export const getProfileByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const profile = await ProfileModel.findOne({ userId });
+    
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Profile not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: profile
+    });
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile",
+      error: error.message
+    });
+  }
+};
+
+// Add this to your personalprofilecontroller.js
+
+
+
+
 export const getPublicProfiles = async (req, res) => {
   try {
     const allProfiles = await ProfileModel.find({});

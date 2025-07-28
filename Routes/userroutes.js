@@ -12,9 +12,11 @@ import {
   createProfile, 
   getallprofiledata, 
   getProfileById, 
+  getProfileByUserId, 
   getProfilePicture, 
   getPublicProfiles, 
-  updateAllBadgeScores 
+  updateAllBadgeScores, 
+
 } from '../Controller/personalprofilecontroller.js';
 
 const userroutes = express.Router();
@@ -93,6 +95,10 @@ userroutes.post('/reset-password', resetPasswordController);
 // Profile routes
 userroutes.get('/profile/:userId', getallprofiledata);
 userroutes.post('/profile', handleMultipartForm, createProfile);
+// Add this route to your userroutes.js
+userroutes.get('/profile/user/:userId', getProfileByUserId);
+// Add this route to your userroutes.js
+
 userroutes.get('/profile', getPublicProfiles);
 userroutes.get('/:userId/picture', getProfilePicture);
 userroutes.get('/profiledetail/:id', getProfileById);

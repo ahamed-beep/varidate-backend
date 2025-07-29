@@ -13,11 +13,12 @@ export const createProfile = async (req, res) => {
     console.log('Received body:', req.body);
 
     // Validate required fields
-    const requiredFields = [
-      'userId', 'name', 'mobile', 'email', 'cnic', 'fatherName',
-      'city', 'country', 'gender', 'dob', 'nationality',
-      'residentStatus', 'maritalStatus'
-    ];
+  const requiredFields = [
+  'userId', 'name', 'mobile', 'email', 'cnic', 'fatherName',
+  'city', 'country', 'gender', 'dob', 'nationality',
+  'residentStatus', 'maritalStatus' // ← Included here ✅
+];
+
     
     const missingFields = requiredFields.filter(field => !req.body[field]);
     if (missingFields.length > 0) {
@@ -392,226 +393,205 @@ export const getProfileByUserId = async (req, res) => {
 
 // Add this to your personalprofilecontroller.js
 
+// Fixed updateProfile function in personalprofilecontroller.js
+
+// Fixed updateProfile function in personalprofilecontroller.js
+
 export const updateProfile = async (req, res) => {
   try {
-    console.log('Received files:', req.files);
-    console.log('Received body:', req.body);
+    console.log("Request origin:", req.headers.origin);
+    console.log("Received files:", req.files ? Object.keys(req.files) : 'No files');
+    console.log("Received body keys:", Object.keys(req.body));
+    console.log("Full body:", JSON.stringify(req.body, null, 2));
 
     const { userId, profileId } = req.body;
-    
-    if (!userId || !profileId) {
+
+    if (!userId) {
       return res.status(400).json({
         success: false,
-        message: 'User ID and Profile ID are required'
+        message: "User ID is required"
       });
     }
 
-    // Find the existing profile
-    const existingProfile = await ProfileModel.findOne({ _id: profileId, userId });
-    
+    // Find existing profile
+    const existingProfile = await ProfileModel.findOne({ 
+      $or: [
+        { _id: profileId },
+        { userId: userId }
+      ]
+    });
+
     if (!existingProfile) {
       return res.status(404).json({
         success: false,
-        message: 'Profile not found'
+        message: "Profile not found"
       });
     }
 
-    // Create an object to hold the updates
-    const updates = {
-      updatedAt: new Date()
+    // Prepare update data
+    const updateData = { ...req.body };
+    delete updateData.profileId; // Remove profileId from update data
+
+    // Handle file uploads
+    const fileFields = ['profilePicture', 'resume'];
+    for (const field of fileFields) {
+      if (req.files && req.files[field]) {
+        try {
+          const uploadedUrl = await uploadToCloudinary(req.files[field].path, `${field}_files`);
+          updateData[field] = uploadedUrl;
+        } catch (uploadError) {
+          console.error(`Error uploading ${field}:`, uploadError);
+          return res.status(500).json({
+            success: false,
+            message: `Failed to upload ${field}`
+          });
+        }
+      }
+    }
+
+    // Process education array
+    if (req.body.education && Array.isArray(req.body.education)) {
+      updateData.education = await Promise.all(
+        req.body.education.map(async (edu, index) => {
+          const educationData = { ...edu };
+          
+          // Handle degree file
+          if (req.files && req.files.education && req.files.education[index] && req.files.education[index].degreeFile) {
+            try {
+              const uploadedUrl = await uploadToCloudinary(
+                req.files.education[index].degreeFile.path, 
+                'degree_files'
+              );
+              educationData.degreeFile = uploadedUrl;
+            } catch (uploadError) {
+              console.error(`Error uploading degree file for education ${index}:`, uploadError);
+              throw new Error(`Failed to upload degree file for education ${index}`);
+            }
+          } else if (edu.degreeFileUrl) {
+            // Keep existing file URL
+            educationData.degreeFile = edu.degreeFileUrl;
+          } else if (existingProfile.education && existingProfile.education[index] && existingProfile.education[index].degreeFile) {
+            // Preserve existing file if no new file provided
+            educationData.degreeFile = existingProfile.education[index].degreeFile;
+          }
+
+          // Clean up URL field
+          delete educationData.degreeFileUrl;
+
+          // Ensure all required fields have defaults
+          educationData.degreeTitleVisibility = educationData.degreeTitleVisibility || 'Public';
+          educationData.instituteVisibility = educationData.instituteVisibility || 'Public';
+          educationData.startDateVisibility = educationData.startDateVisibility || 'Public';
+          educationData.endDateVisibility = educationData.endDateVisibility || 'Public';
+          educationData.websiteVisibility = educationData.websiteVisibility || 'Public';
+          educationData.degreeFileVisibility = educationData.degreeFileVisibility || 'Public';
+          educationData.verificationLevel = educationData.verificationLevel || 'Silver';
+
+          return educationData;
+        })
+      );
+    }
+
+    // Process experience array
+    if (req.body.experience && Array.isArray(req.body.experience)) {
+      updateData.experience = await Promise.all(
+        req.body.experience.map(async (exp, index) => {
+          const experienceData = { ...exp };
+          
+          // Ensure jobFunctions is an array
+          if (!Array.isArray(experienceData.jobFunctions)) {
+            experienceData.jobFunctions = [];
+          }
+
+          // Handle experience file
+          if (req.files && req.files.experience && req.files.experience[index] && req.files.experience[index].experienceFile) {
+            try {
+              const uploadedUrl = await uploadToCloudinary(
+                req.files.experience[index].experienceFile.path, 
+                'experience_files'
+              );
+              experienceData.experienceFile = uploadedUrl;
+            } catch (uploadError) {
+              console.error(`Error uploading experience file for experience ${index}:`, uploadError);
+              throw new Error(`Failed to upload experience file for experience ${index}`);
+            }
+          } else if (exp.experienceFileUrl) {
+            // Keep existing file URL
+            experienceData.experienceFile = exp.experienceFileUrl;
+          } else if (existingProfile.experience && existingProfile.experience[index] && existingProfile.experience[index].experienceFile) {
+            // Preserve existing file if no new file provided
+            experienceData.experienceFile = existingProfile.experience[index].experienceFile;
+          }
+
+          // Clean up URL field
+          delete experienceData.experienceFileUrl;
+
+          // Ensure all required fields have defaults
+          experienceData.jobTitleVisibility = experienceData.jobTitleVisibility || 'Public';
+          experienceData.companyVisibility = experienceData.companyVisibility || 'Public';
+          experienceData.startDateVisibility = experienceData.startDateVisibility || 'Public';
+          experienceData.endDateVisibility = experienceData.endDateVisibility || 'Public';
+          experienceData.websiteVisibility = experienceData.websiteVisibility || 'Public';
+          experienceData.experienceFileVisibility = experienceData.experienceFileVisibility || 'Public';
+          experienceData.jobFunctionsVisibility = experienceData.jobFunctionsVisibility || 'Public';
+          experienceData.industryVisibility = experienceData.industryVisibility || 'Public';
+          experienceData.verificationLevel = experienceData.verificationLevel || 'Silver';
+
+          return experienceData;
+        })
+      );
+    }
+
+    // Convert string arrays back to arrays for shift preferences and work authorization
+    if (typeof updateData.shiftPreferences === 'string') {
+      updateData.shiftPreferences = [updateData.shiftPreferences];
+    }
+    if (typeof updateData.workAuthorization === 'string') {
+      updateData.workAuthorization = [updateData.workAuthorization];
+    }
+
+    // Handle array fields that come as indexed keys
+    const processArrayFields = (data, fieldName) => {
+      const arrayItems = [];
+      Object.keys(data).forEach(key => {
+        const match = key.match(new RegExp(`${fieldName}\\[(\\d+)\\]`));
+        if (match) {
+          const index = parseInt(match[1]);
+          arrayItems[index] = data[key];
+          delete data[key];
+        }
+      });
+      if (arrayItems.length > 0) {
+        data[fieldName] = arrayItems.filter(item => item !== undefined);
+      }
     };
 
-    // Process main files if provided
-    if (req.files?.profilePicture) {
-      updates.profilePicture = await uploadToCloudinary(req.files.profilePicture.path, 'profile_images');
-    }
+    processArrayFields(updateData, 'shiftPreferences');
+    processArrayFields(updateData, 'workAuthorization');
 
-    if (req.files?.resume) {
-      updates.resume = await uploadToCloudinary(req.files.resume.path, 'resumes');
-    }
+    // Update the profile
+    console.log('About to update profile with data:', JSON.stringify({
+      education: updateData.education?.length || 0,
+      experience: updateData.experience?.length || 0,
+      hasFiles: Object.keys(updateData).filter(key => key.includes('File') || key === 'profilePicture' || key === 'resume')
+    }, null, 2));
 
-    // Process personal information fields
-    const personalFields = [
-      'name', 'mobile', 'email', 'cnic', 'fatherName',
-      'city', 'country', 'gender', 'dob', 'nationality',
-      'residentStatus', 'maritalStatus', 'workLocationPreference'
-    ];
-
-    personalFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        if (field === 'dob' && req.body[field]) {
-          updates[field] = new Date(req.body[field]);
-        } else {
-          updates[field] = req.body[field];
-        }
-      }
-    });
-
-    // Process shiftPreferences if provided
-    if (req.body['shiftPreferences[0]'] || req.body.shiftPreferences) {
-      let shiftPreferences = [];
-      if (req.body['shiftPreferences[0]']) {
-        shiftPreferences = Object.keys(req.body)
-          .filter(key => key.startsWith('shiftPreferences['))
-          .sort((a, b) => {
-            const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
-            const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
-            return indexA - indexB;
-          })
-          .map(key => req.body[key]);
-      } else if (req.body.shiftPreferences && Array.isArray(req.body.shiftPreferences)) {
-        shiftPreferences = req.body.shiftPreferences;
-      }
-      updates.shiftPreferences = shiftPreferences;
-    }
-
-    // Process workAuthorization if provided
-    if (req.body['workAuthorization[0]'] || req.body.workAuthorization) {
-      let workAuthorization = [];
-      if (req.body['workAuthorization[0]']) {
-        workAuthorization = Object.keys(req.body)
-          .filter(key => key.startsWith('workAuthorization['))
-          .sort((a, b) => {
-            const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
-            const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
-            return indexA - indexB;
-          })
-          .map(key => req.body[key]);
-      } else if (req.body.workAuthorization && Array.isArray(req.body.workAuthorization)) {
-        workAuthorization = req.body.workAuthorization;
-      }
-      updates.workAuthorization = workAuthorization;
-    }
-
-    // Process education if provided
-    if (req.body.education) {
-      const educationArray = Array.isArray(req.body.education) 
-        ? req.body.education 
-        : [req.body.education];
-
-      updates.education = await Promise.all(educationArray.map(async (edu, index) => {
-        const educationDoc = existingProfile.education.id(edu.id) || {};
-        
-        const degreeFile = req.files?.education?.[index]?.degreeFile
-          ? await uploadToCloudinary(
-              req.files.education[index].degreeFile.path,
-              'education_files'
-            )
-          : educationDoc.degreeFile;
-
-        return {
-          _id: edu.id || educationDoc._id || new mongoose.Types.ObjectId(),
-          degreeTitle: edu.degreeTitle || educationDoc.degreeTitle,
-          institute: edu.institute || educationDoc.institute,
-          startDate: edu.startDate ? new Date(edu.startDate) : educationDoc.startDate,
-          endDate: edu.endDate ? new Date(edu.endDate) : educationDoc.endDate,
-          website: edu.website || educationDoc.website,
-          degreeFile,
-          // Keep existing visibility and badge settings if not provided
-          degreeTitleVisibility: edu.degreeTitleVisibility || educationDoc.degreeTitleVisibility || 'Public',
-          instituteVisibility: edu.instituteVisibility || educationDoc.instituteVisibility || 'Public',
-          startDateVisibility: edu.startDateVisibility || educationDoc.startDateVisibility || 'Public',
-          endDateVisibility: edu.endDateVisibility || educationDoc.endDateVisibility || 'Public',
-          websiteVisibility: edu.websiteVisibility || educationDoc.websiteVisibility || 'Public',
-          degreeFileVisibility: edu.degreeFileVisibility || educationDoc.degreeFileVisibility || 'Public',
-          verificationLevel: edu.verificationLevel || educationDoc.verificationLevel || 'Silver',
-          // Badges - preserve existing if not provided
-          degreeTitleBadge: edu.degreeTitleBadge || educationDoc.degreeTitleBadge || 'Black',
-          degreeTitleBadgeScore: edu.degreeTitleBadgeScore || educationDoc.degreeTitleBadgeScore || 0,
-          instituteBadge: edu.instituteBadge || educationDoc.instituteBadge || 'Black',
-          instituteBadgeScore: edu.instituteBadgeScore || educationDoc.instituteBadgeScore || 0,
-          startDateBadge: edu.startDateBadge || educationDoc.startDateBadge || 'Black',
-          startDateBadgeScore: edu.startDateBadgeScore || educationDoc.startDateBadgeScore || 0,
-          endDateBadge: edu.endDateBadge || educationDoc.endDateBadge || 'Black',
-          endDateBadgeScore: edu.endDateBadgeScore || educationDoc.endDateBadgeScore || 0,
-          degreeFileBadge: edu.degreeFileBadge || educationDoc.degreeFileBadge || 'Black',
-          degreeFileBadgeScore: edu.degreeFileBadgeScore || educationDoc.degreeFileBadgeScore || 0,
-          websiteBadge: edu.websiteBadge || educationDoc.websiteBadge || 'Black',
-          websiteBadgeScore: edu.websiteBadgeScore || educationDoc.websiteBadgeScore || 0
-        };
-      }));
-    }
-
-    // Process experience if provided
-    if (req.body.experience) {
-      const experienceArray = Array.isArray(req.body.experience) 
-        ? req.body.experience 
-        : [req.body.experience];
-
-      updates.experience = await Promise.all(experienceArray.map(async (exp, index) => {
-        const experienceDoc = existingProfile.experience.id(exp.id) || {};
-        
-        const experienceFile = req.files?.experience?.[index]?.experienceFile
-          ? await uploadToCloudinary(
-              req.files.experience[index].experienceFile.path,
-              'experience_files'
-            )
-          : experienceDoc.experienceFile;
-
-        // Handle jobFunctions array
-        let jobFunctions = [];
-        if (exp['jobFunctions][0'] || exp['jobFunctions][1']) {
-          jobFunctions = Object.keys(exp)
-            .filter(key => key.startsWith('jobFunctions]['))
-            .sort((a, b) => {
-              const indexA = parseInt(a.match(/\]\[(\d+)/)[1]);
-              const indexB = parseInt(b.match(/\]\[(\d+)/)[1]);
-              return indexA - indexB;
-            })
-            .map(key => exp[key]);
-        } else if (exp.jobFunctions && Array.isArray(exp.jobFunctions)) {
-          jobFunctions = exp.jobFunctions;
-        } else {
-          jobFunctions = experienceDoc.jobFunctions || [];
-        }
-
-        return {
-          _id: exp.id || experienceDoc._id || new mongoose.Types.ObjectId(),
-          jobTitle: exp.jobTitle || experienceDoc.jobTitle,
-          company: exp.company || experienceDoc.company,
-          startDate: exp.startDate ? new Date(exp.startDate) : experienceDoc.startDate,
-          endDate: exp.endDate ? new Date(exp.endDate) : experienceDoc.endDate,
-          website: exp.website || experienceDoc.website,
-          experienceFile,
-          jobFunctions,
-          industry: exp.industry || experienceDoc.industry,
-          // Keep existing visibility and badge settings if not provided
-          jobTitleVisibility: exp.jobTitleVisibility || experienceDoc.jobTitleVisibility || 'Public',
-          companyVisibility: exp.companyVisibility || experienceDoc.companyVisibility || 'Public',
-          startDateVisibility: exp.startDateVisibility || experienceDoc.startDateVisibility || 'Public',
-          endDateVisibility: exp.endDateVisibility || experienceDoc.endDateVisibility || 'Public',
-          websiteVisibility: exp.websiteVisibility || experienceDoc.websiteVisibility || 'Public',
-          experienceFileVisibility: exp.experienceFileVisibility || experienceDoc.experienceFileVisibility || 'Public',
-          jobFunctionsVisibility: exp.jobFunctionsVisibility || experienceDoc.jobFunctionsVisibility || 'Public',
-          industryVisibility: exp.industryVisibility || experienceDoc.industryVisibility || 'Public',
-          verificationLevel: exp.verificationLevel || experienceDoc.verificationLevel || 'Silver',
-          // Badges - preserve existing if not provided
-          jobTitleBadge: exp.jobTitleBadge || experienceDoc.jobTitleBadge || 'Black',
-          jobTitleBadgeScore: exp.jobTitleBadgeScore || experienceDoc.jobTitleBadgeScore || 0,
-          companyBadge: exp.companyBadge || experienceDoc.companyBadge || 'Black',
-          companyBadgeScore: exp.companyBadgeScore || experienceDoc.companyBadgeScore || 0,
-          startDateBadge: exp.startDateBadge || experienceDoc.startDateBadge || 'Black',
-          startDateBadgeScore: exp.startDateBadgeScore || experienceDoc.startDateBadgeScore || 0,
-          endDateBadge: exp.endDateBadge || experienceDoc.endDateBadge || 'Black',
-          endDateBadgeScore: exp.endDateBadgeScore || experienceDoc.endDateBadgeScore || 0,
-          jobFunctionsBadge: exp.jobFunctionsBadge || experienceDoc.jobFunctionsBadge || 'Black',
-          jobFunctionsBadgeScore: exp.jobFunctionsBadgeScore || experienceDoc.jobFunctionsBadgeScore || 0,
-          industryBadge: exp.industryBadge || experienceDoc.industryBadge || 'Black',
-          industryBadgeScore: exp.industryBadgeScore || experienceDoc.industryBadgeScore || 0,
-          websiteBadge: exp.websiteBadge || experienceDoc.websiteBadge || 'Black',
-          websiteBadgeScore: exp.websiteBadgeScore || experienceDoc.websiteBadgeScore || 0,
-          experienceFileBadge: exp.experienceFileBadge || experienceDoc.experienceFileBadge || 'Black',
-          experienceFileBadgeScore: exp.experienceFileBadgeScore || experienceDoc.experienceFileBadgeScore || 0
-        };
-      }));
-    }
-
-    // Update the profile with only the provided fields
     const updatedProfile = await ProfileModel.findByIdAndUpdate(
-      profileId,
-      { $set: updates },
-      { new: true, runValidators: true }
+      existingProfile._id,
+      updateData,
+      { 
+        new: true, 
+        runValidators: true,
+        context: 'query'
+      }
     );
+
+    if (!updatedProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Failed to update profile"
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -621,28 +601,45 @@ export const updateProfile = async (req, res) => {
 
   } catch (error) {
     console.error("Profile update error:", error);
+    console.error("Error stack:", error.stack);
     
+    // Log validation errors specifically
     if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({
-        success: false,
-        message: "Validation error",
-        errors: messages
-      });
+      console.error("Validation errors:", error.errors);
+    }
+    
+    // Clean up uploaded files on error
+    if (req.files) {
+      const cleanupFiles = (filesObj) => {
+        if (Array.isArray(filesObj)) {
+          filesObj.forEach(fileArray => {
+            if (Array.isArray(fileArray)) {
+              fileArray.forEach(file => {
+                if (file && file.path && fs.existsSync(file.path)) {
+                  fs.unlinkSync(file.path);
+                }
+              });
+            } else if (fileArray && typeof fileArray === 'object') {
+              Object.values(fileArray).forEach(file => {
+                if (file && file.path && fs.existsSync(file.path)) {
+                  fs.unlinkSync(file.path);
+                }
+              });
+            }
+          });
+        } else if (filesObj && filesObj.path && fs.existsSync(filesObj.path)) {
+          fs.unlinkSync(filesObj.path);
+        }
+      };
+
+      Object.values(req.files).forEach(cleanupFiles);
     }
 
-    if (error.message.includes('Cloudinary')) {
-      return res.status(400).json({
-        success: false,
-        message: "File upload error",
-        error: error.message
-      });
-    }
-
-    res.status(500).json({
+    res.status(400).json({
       success: false,
-      message: "Failed to update profile",
-      error: error.message
+      message: error.message || "Failed to update profile",
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      validationErrors: error.name === 'ValidationError' ? error.errors : undefined
     });
   }
 };
@@ -810,91 +807,92 @@ const getBadgeFromScore = (score) => {
   }
   return "Black"; // Fallback
 };
+
 export const updateAllBadgeScores = async (req, res) => {
   try {
-    console.log("Incoming Request Body (votes):", req.body);
     const { id } = req.params;
-    const votes = req.body;
+    const { voterId, ...votes } = req.body;
 
+    if (!voterId) {
+      return res.status(400).json({ success: false, error: "Voter ID is required to cast votes." });
+    }
+    if (!mongoose.Types.ObjectId.isValid(voterId)) {
+        return res.status(400).json({ success: false, error: "Invalid voter ID format." });
+    }
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid profile ID format"
-      });
+      return res.status(400).json({ success: false, error: "Invalid profile ID format" });
     }
 
     const profile = await ProfileModel.findById(id);
     if (!profile) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "Profile not found" 
-      });
+      return res.status(404).json({ success: false, error: "Profile not found" });
     }
 
-    const updates = {
-      $inc: {},
-      $set: {}
-    };
+    const updates = { $inc: {}, $set: {}, $addToSet: {} };
     const errors = [];
     const modifiedFields = [];
+    const skippedFields = [];
 
     for (const [field, vote] of Object.entries(votes)) {
       if (vote !== "yes" && vote !== "no") {
-        errors.push(`Invalid vote value for ${field}`);
+        errors.push(`Invalid vote value for ${field}. Must be 'yes' or 'no'.`);
         continue;
       }
 
       const increment = vote === "yes" ? 1 : 0;
-      let scorePath, badgePath;
+      let scorePath, badgePath, votedByPath;
 
       if (field.includes('-')) {
         const [type, subField, index] = field.split('-');
         const arrayField = type === 'edu' ? 'education' : 'experience';
-        
+
         if (!profile[arrayField]?.[index]) {
-          errors.push(`Invalid index for ${arrayField}`);
+          errors.push(`Subdocument at index ${index} for ${arrayField} not found for field ${field}.`);
           continue;
         }
 
         scorePath = `${arrayField}.${index}.${subField}BadgeScore`;
         badgePath = `${arrayField}.${index}.${subField}Badge`;
+        votedByPath = `${arrayField}.${index}.${subField}VotedBy`;
       } else {
         const baseField = field.replace('BadgeScore', '');
         scorePath = `${baseField}BadgeScore`;
         badgePath = `${baseField}Badge`;
+        votedByPath = `${baseField}VotedBy`;
       }
 
       const currentScore = _.get(profile, scorePath, 0);
       if (typeof currentScore !== 'number') {
-        errors.push(`Invalid numeric value for ${scorePath}`);
+        errors.push(`Current score for ${scorePath} is not a valid number.`);
+        continue;
+      }
+
+      const currentVotedBy = _.get(profile, votedByPath, []);
+      if (currentVotedBy.map(String).includes(voterId.toString())) {
+        skippedFields.push(field);
+        errors.push(`Voter ${voterId} has already cast a vote for ${field}.`);
         continue;
       }
 
       const newScore = currentScore + increment;
-      
-      updates.$inc[scorePath] = increment;
-      updates.$set[badgePath] = getBadgeFromScore(newScore);
-      
-      modifiedFields.push(field);
 
-      // Debug each field update
-      console.log(`Processing ${field}:`);
-      console.log(`- Current Score: ${currentScore}`);
-      console.log(`- New Score: ${newScore}`);
-      console.log(`- Badge To Set: ${updates.$set[badgePath]}`);
-      console.log(`- Score Path: ${scorePath}`);
-      console.log(`- Badge Path: ${badgePath}`);
+      updates.$inc[scorePath] = (updates.$inc[scorePath] || 0) + increment;
+      updates.$set[badgePath] = getBadgeFromScore(newScore);
+      updates.$addToSet[votedByPath] = voterId;
+
+      modifiedFields.push(field);
     }
 
-    // Debug the final updates object
-    console.log("Final Updates Object:", JSON.stringify(updates, null, 2));
-    console.log("Score Paths Being Updated:", Object.keys(updates.$inc));
-    console.log("Badge Paths Being Updated:", Object.keys(updates.$set));
+    if (Object.keys(updates.$inc).length === 0) delete updates.$inc;
+    if (Object.keys(updates.$set).length === 0) delete updates.$set;
+    if (Object.keys(updates.$addToSet).length === 0) delete updates.$addToSet;
 
-    if (Object.keys(updates.$inc).length === 0 && Object.keys(updates.$set).length === 0) {
+    if (Object.keys(updates.$inc || {}).length === 0 &&
+        Object.keys(updates.$set || {}).length === 0 &&
+        Object.keys(updates.$addToSet || {}).length === 0) {
       return res.status(400).json({
         success: false,
-        error: "No valid fields to update",
+        message: "No valid fields to update or all provided fields already voted on by this user.",
         errors
       });
     }
@@ -905,14 +903,12 @@ export const updateAllBadgeScores = async (req, res) => {
       { new: true }
     );
 
-    // Debug the returned profile
-    console.log("Updated Profile:", JSON.stringify(updatedProfile, null, 2));
-
     return res.status(200).json({
       success: true,
       message: "Badge scores updated successfully",
       data: updatedProfile,
       modifiedFields,
+      skippedFields,
       errors: errors.length > 0 ? errors : undefined
     });
 

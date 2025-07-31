@@ -141,8 +141,8 @@ userroutes.post('/reset-password', resetPasswordController);
 
 // Profile routes
 userroutes.get('/profile/:userId', getallprofiledata);
-userroutes.post('/profile', handleMultipartForm, createProfile); // Create new profile
-userroutes.put('/profile', handleMultipartForm, updateProfile); // Update existing profile
+userroutes.post('/profile', handleMultipartForm, createProfile); 
+userroutes.put('/profile', handleMultipartForm, updateProfile); 
 userroutes.get('/profile/user/:userId', getProfileByUserId);
 userroutes.get('/profile', getPublicProfiles);
 userroutes.get('/:userId/picture', getProfilePicture);

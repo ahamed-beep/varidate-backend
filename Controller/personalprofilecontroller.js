@@ -391,11 +391,6 @@ export const getProfileByUserId = async (req, res) => {
   }
 };
 
-// Add this to your personalprofilecontroller.js
-
-// Fixed updateProfile function in personalprofilecontroller.js
-
-// Fixed updateProfile function in personalprofilecontroller.js
 
 export const updateProfile = async (req, res) => {
   try {
@@ -647,87 +642,45 @@ export const updateProfile = async (req, res) => {
 
 
 
+
+
 export const getPublicProfiles = async (req, res) => {
   try {
-    const allProfiles = await ProfileModel.find({});
+    // Get the logged-in user's ID from query parameters
+    const loggedInUserId = req.query.loggedInUserId;
     
-    const publicProfiles = allProfiles.map(profile => {
-      const publicProfile = { _id: profile._id };
-      
-      // Process top-level fields
-      const fields = Object.keys(profile.toObject());
-      fields.forEach(field => {
-        if (field.endsWith('Visibility') || field.endsWith('Badge') || field.startsWith('_')) return;
-        
-        const visibilityField = `${field}Visibility`;
-        if (profile[visibilityField] === 'Public') {
-          publicProfile[field] = profile[field];
-        }
-      });
+    // Debug log to verify the received userId
+    console.log(`Received userId for exclusion: ${loggedInUserId}`);
+    
+    // Create filter to exclude user's own profile
+    const filter = {};
+    if (loggedInUserId && mongoose.Types.ObjectId.isValid(loggedInUserId)) {
+      filter.userId = { $ne: new mongoose.Types.ObjectId(loggedInUserId) };
+    }
 
-      // Process education array - modified to be less aggressive
-      if (profile.education && profile.education.length > 0) {
-        publicProfile.education = profile.education.map(edu => {
-          const publicEdu = {};
-          let hasPublicFields = false;
-          
-          Object.keys(edu).forEach(key => {
-            if (!key.endsWith('Visibility') && !key.endsWith('Badge') && key !== '_id') {
-              const visibility = edu[`${key}Visibility`];
-              // If visibility is undefined or Public, include the field
-              if (!visibility || visibility === 'Public') {
-                publicEdu[key] = edu[key];
-                hasPublicFields = true;
-              }
-            }
-          });
-          
-          return hasPublicFields ? publicEdu : null;
-        }).filter(edu => edu !== null); 
-      }
+    // Find all profiles EXCEPT the logged-in user's
+    const profiles = await ProfileModel.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
 
-      // Process experience array - modified to be less aggressive
-      if (profile.experience && profile.experience.length > 0) {
-        publicProfile.experience = profile.experience.map(exp => {
-          const publicExp = {};
-          let hasPublicFields = false;
-          
-          Object.keys(exp).forEach(key => {
-            if (!key.endsWith('Visibility') && !key.endsWith('Badge') && key !== '_id') {
-              const visibility = exp[`${key}Visibility`];
-              // If visibility is undefined or Public, include the field
-              if (!visibility || visibility === 'Public') {
-                publicExp[key] = exp[key];
-                hasPublicFields = true;
-              }
-            }
-          });
-          
-          return hasPublicFields ? publicExp : null;
-        }).filter(exp => exp !== null);
-      }
+    // Debug logs
+    console.log(`Filtering out profile for userId: ${loggedInUserId}`);
+    console.log(`Found ${profiles.length} public profiles after filtering`);
 
-      return publicProfile;
-    }).filter(profile => {
-      // Keep profile if it has at least one public field besides _id
-      return Object.keys(profile).length > 1 || 
-             (profile.education && profile.education.length > 0) ||
-             (profile.experience && profile.experience.length > 0);
-    });
-
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      profiles: publicProfiles
+      profiles
     });
+
   } catch (error) {
-    console.error("Error getting public profiles:", error);
-    return res.status(500).json({
+    console.error("Error fetching public profiles:", error);
+    res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: "Failed to fetch public profiles",
+      error: error.message
     });
   }
 };
-
 
 export const getProfileById = async (req, res) => {
   try {
@@ -792,20 +745,35 @@ export const getProfilePicture = async (req , res) => {
 
 const BADGE_THRESHOLDS = [
   { name: "Platinum", threshold: 20 },
-  { name: "Gold", threshold: 10 },     // Gold at 10 (instead of 15)
-  { name: "Silver", threshold: 5 },    // Silver at 5 (instead of 10)
+  { name: "Gold", threshold: 10 },
+  { name: "Silver", threshold: 5 },
   { name: "Black", threshold: 0 }
-  
 ];
 
 const getBadgeFromScore = (score) => {
-  const numericScore = Number(score); // Ensure it's a number
+  const numericScore = Number(score);
   for (const badge of BADGE_THRESHOLDS) {
     if (numericScore >= badge.threshold) {
       return badge.name;
     }
   }
-  return "Black"; // Fallback
+  return "Black";
+};
+
+const checkExistingVote = (profile, fieldPath, voterId) => {
+  if (!fieldPath.includes('-')) {
+    const baseField = fieldPath.replace('BadgeScore', '');
+    const votedBy = profile[`${baseField}VotedBy`];
+    return votedBy && votedBy.map(String).includes(voterId);
+  }
+
+  const [type, field, index] = fieldPath.split('-');
+  const arrayField = type === 'edu' ? 'education' : 'experience';
+  
+  if (!profile[arrayField]?.[index]) return false;
+  
+  const votedBy = profile[arrayField][index][`${field}VotedBy`];
+  return votedBy && votedBy.map(String).includes(voterId);
 };
 
 export const updateAllBadgeScores = async (req, res) => {
@@ -817,7 +785,7 @@ export const updateAllBadgeScores = async (req, res) => {
       return res.status(400).json({ success: false, error: "Voter ID is required to cast votes." });
     }
     if (!mongoose.Types.ObjectId.isValid(voterId)) {
-        return res.status(400).json({ success: false, error: "Invalid voter ID format." });
+      return res.status(400).json({ success: false, error: "Invalid voter ID format." });
     }
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ success: false, error: "Invalid profile ID format" });
@@ -828,19 +796,35 @@ export const updateAllBadgeScores = async (req, res) => {
       return res.status(404).json({ success: false, error: "Profile not found" });
     }
 
-    const updates = { $inc: {}, $set: {}, $addToSet: {} };
+    const updates = { $inc: {}, $set: {}, $addToSet: {}, $pull: {} };
     const errors = [];
     const modifiedFields = [];
     const skippedFields = [];
 
     for (const [field, vote] of Object.entries(votes)) {
+      if (field === 'voterId') continue;
+
       if (vote !== "yes" && vote !== "no") {
         errors.push(`Invalid vote value for ${field}. Must be 'yes' or 'no'.`);
         continue;
       }
 
-      const increment = vote === "yes" ? 1 : 0;
       let scorePath, badgePath, votedByPath;
+      let increment = 0;
+
+      const hasExistingVote = checkExistingVote(profile, field, voterId);
+      
+      if (hasExistingVote) {
+        if (vote === "no") {
+          increment = -1;
+        } else if (vote === "yes") {
+          // Already voted yes, no change
+          skippedFields.push(field);
+          continue;
+        }
+      } else {
+        increment = vote === "yes" ? 1 : 0;
+      }
 
       if (field.includes('-')) {
         const [type, subField, index] = field.split('-');
@@ -867,29 +851,24 @@ export const updateAllBadgeScores = async (req, res) => {
         continue;
       }
 
-      const currentVotedBy = _.get(profile, votedByPath, []);
-      if (currentVotedBy.map(String).includes(voterId.toString())) {
-        skippedFields.push(field);
-        errors.push(`Voter ${voterId} has already cast a vote for ${field}.`);
-        continue;
-      }
-
       const newScore = currentScore + increment;
 
       updates.$inc[scorePath] = (updates.$inc[scorePath] || 0) + increment;
       updates.$set[badgePath] = getBadgeFromScore(newScore);
-      updates.$addToSet[votedByPath] = voterId;
+      
+      if (vote === "yes") {
+        updates.$addToSet[votedByPath] = voterId;
+      } else {
+        updates.$pull[votedByPath] = voterId;
+      }
 
       modifiedFields.push(field);
     }
 
-    if (Object.keys(updates.$inc).length === 0) delete updates.$inc;
-    if (Object.keys(updates.$set).length === 0) delete updates.$set;
-    if (Object.keys(updates.$addToSet).length === 0) delete updates.$addToSet;
-
-    if (Object.keys(updates.$inc || {}).length === 0 &&
-        Object.keys(updates.$set || {}).length === 0 &&
-        Object.keys(updates.$addToSet || {}).length === 0) {
+    if (Object.keys(updates.$inc).length === 0 && 
+        Object.keys(updates.$set).length === 0 && 
+        Object.keys(updates.$addToSet).length === 0 &&
+        Object.keys(updates.$pull).length === 0) {
       return res.status(400).json({
         success: false,
         message: "No valid fields to update or all provided fields already voted on by this user.",
@@ -936,7 +915,7 @@ export const getallprofiledata = async(req , res)=>{
       return res.status(404).json({ message: 'Profile not found' });
     }
 
-    return res.status(200).json(profile); // send entire raw profile doc
+    return res.status(200).json(profile); 
   } catch (err) {
     console.error("Error fetching profile:", err);
     res.status(500).json({ message: "Server error" });

@@ -33,6 +33,10 @@ app.use(cors({
   credentials: true
 }));
 
+app.get('/' , async ()=>{
+  console.log('hello')
+})
+
 app.use(json());
 app.use('/api', userroutes)
 

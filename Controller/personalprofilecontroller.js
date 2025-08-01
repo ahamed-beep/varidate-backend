@@ -13,13 +13,12 @@ export const createProfile = async (req, res) => {
     console.log('Received body:', req.body);
 
     // Validate required fields
-  const requiredFields = [
-  'userId', 'name', 'mobile', 'email', 'cnic', 'fatherName',
-  'city', 'country', 'gender', 'dob', 'nationality',
-  'residentStatus', 'maritalStatus' // ← Included here ✅
-];
+    const requiredFields = [
+      'userId', 'name', 'mobile', 'email', 'cnic', 'fatherName',
+      'city', 'country', 'gender', 'dob', 'nationality',
+      'residentStatus', 'maritalStatus'
+    ];
 
-    
     const missingFields = requiredFields.filter(field => !req.body[field]);
     if (missingFields.length > 0) {
       return res.status(400).json({
@@ -45,10 +44,9 @@ export const createProfile = async (req, res) => {
       });
     }
 
-    // Process shiftPreferences array - FIXED
+    // Process shiftPreferences array
     let shiftPreferences = [];
     if (req.body['shiftPreferences[0]']) {
-      // Handle array fields sent as indexed parameters
       shiftPreferences = Object.keys(req.body)
         .filter(key => key.startsWith('shiftPreferences['))
         .sort((a, b) => {
@@ -61,7 +59,7 @@ export const createProfile = async (req, res) => {
       shiftPreferences = req.body.shiftPreferences;
     }
 
-    // Process workAuthorization array - FIXED
+    // Process workAuthorization array
     let workAuthorization = [];
     if (req.body['workAuthorization[0]']) {
       workAuthorization = Object.keys(req.body)
@@ -115,17 +113,17 @@ export const createProfile = async (req, res) => {
 
       education.push({
         degreeTitle: edu.degreeTitle,
-        degreeTitleVisibility: 'Public',
+        degreeTitleVisibility: edu.degreeTitleVisibility ,
         institute: edu.institute,
-        instituteVisibility: 'Public',
+        instituteVisibility: edu.instituteVisibility , 
         website: edu.website || '',
-        websiteVisibility: 'Public',
+        websiteVisibility: edu.websiteVisibility , 
         startDate: new Date(edu.startDate),
-        startDateVisibility: 'Public',
+        startDateVisibility: edu.startDateVisibility ,
         endDate: edu.endDate ? new Date(edu.endDate) : null,
-        endDateVisibility: 'Public',
+        endDateVisibility: edu.endDateVisibility , 
         degreeFile,
-        degreeFileVisibility: 'Public',
+        degreeFileVisibility: edu.degreeFileVisibility , 
         verificationLevel: "Silver",
         degreeTitleBadge: "Black",
         degreeTitleBadgeScore: 0,
@@ -179,15 +177,14 @@ export const createProfile = async (req, res) => {
         });
       }
 
-      // Handle jobFunctions array - FIXED
+      // Handle jobFunctions array
       let jobFunctions = [];
-      if (exp['jobFunctions][0'] || exp['jobFunctions][1']) {
-        // Handle array fields sent as indexed parameters
+      if (exp['jobFunctions[0]']) {
         jobFunctions = Object.keys(exp)
-          .filter(key => key.startsWith('jobFunctions]['))
+          .filter(key => key.startsWith('jobFunctions['))
           .sort((a, b) => {
-            const indexA = parseInt(a.match(/\]\[(\d+)/)[1]);
-            const indexB = parseInt(b.match(/\]\[(\d+)/)[1]);
+            const indexA = parseInt(a.match(/\[(\d+)\]/)[1]);
+            const indexB = parseInt(b.match(/\[(\d+)\]/)[1]);
             return indexA - indexB;
           })
           .map(key => exp[key]);
@@ -197,21 +194,21 @@ export const createProfile = async (req, res) => {
 
       experience.push({
         jobTitle: exp.jobTitle,
-        jobTitleVisibility: 'Public',
+        jobTitleVisibility: exp.jobTitleVisibility , // Changed to Hide
         company: exp.company,
-        companyVisibility: 'Public',
+        companyVisibility: exp.companyVisibility , // Changed to Hide
         website: exp.website || '',
-        websiteVisibility: 'Public',
+        websiteVisibility: exp.websiteVisibility , // Changed to Hide
         startDate: new Date(exp.startDate),
-        startDateVisibility: 'Public',
+        startDateVisibility: exp.startDateVisibility , // Changed to Hide
         endDate: exp.endDate ? new Date(exp.endDate) : null,
-        endDateVisibility: 'Public',
+        endDateVisibility: exp.endDateVisibility , // Changed to Hide
         jobFunctions,
-        jobFunctionsVisibility: 'Public',
+        jobFunctionsVisibility: exp.jobFunctionsVisibility , // Changed to Hide
         industry: exp.industry,
-        industryVisibility: 'Public',
+        industryVisibility: exp.industryVisibility , // Changed to Hide
         experienceFile,
-        experienceFileVisibility: 'Public',
+        experienceFileVisibility: exp.experienceFileVisibility , // Changed to Hide
         verificationLevel: "Silver",
         jobTitleBadge: "Black",
         jobTitleBadgeScore: 0,
@@ -232,86 +229,93 @@ export const createProfile = async (req, res) => {
       });
     }
 
-    // Prepare complete profile data with all fields
+    // Prepare complete profile data with all fields and their visibility
     const profileData = {
       userId: req.body.userId,
       name: req.body.name,
-      nameVisibility: 'Public',
+      nameVisibility: req.body.nameVisibility , // Changed to Hide
       nameBadge: "Black",
       nameBadgeScore: 0,
       fatherName: req.body.fatherName,
-      fatherNameVisibility: 'Public',
+      fatherNameVisibility: req.body.fatherNameVisibility , // Changed to Hide
       fatherNameBadge: "Black",
       fatherNameBadgeScore: 0,
       gender: req.body.gender,
-      genderVisibility: 'Public',
+      genderVisibility: req.body.genderVisibility , // Changed to Hide
       genderBadge: "Black",
       genderBadgeScore: 0,
       dob: new Date(req.body.dob),
-      dobVisibility: 'Public',
+      dobVisibility: req.body.dobVisibility , // Changed to Hide
       dobBadge: "Black",
       dobBadgeScore: 0,
       cnic: req.body.cnic,
-      cnicVisibility: 'Public',
+      cnicVisibility: 'Private', // CNIC is always private
       cnicBadge: "Black",
       cnicBadgeScore: 0,
       profilePicture,
-      profilePictureVisibility: 'Public',
+      profilePictureVisibility: req.body.profilePictureVisibility , // Changed to Hide
       profilePictureBadge: "Black",
       profilePictureBadgeScore: 0,
       mobile: req.body.mobile,
-      mobileVisibility: 'Public',
+      mobileVisibility: req.body.mobileVisibility , // Changed to Hide
       mobileBadge: "Black",
       mobileBadgeScore: 0,
       email: req.body.email,
-      emailVisibility: 'Public',
+      emailVisibility: req.body.emailVisibility , // Changed to Hide
       emailBadge: "Black",
       emailBadgeScore: 0,
       address: req.body.address || '',
-      addressVisibility: 'Public',
+      addressVisibility: req.body.addressVisibility , // Changed to Hide
       addressBadge: "Black",
       addressBadgeScore: 0,
       city: req.body.city,
-      cityVisibility: 'Public',
+      cityVisibility: req.body.cityVisibility , // Changed to Hide
       cityBadge: "Black",
       cityBadgeScore: 0,
       country: req.body.country,
-      countryVisibility: 'Public',
+      countryVisibility: req.body.countryVisibility , // Changed to Hide
       countryBadge: "Black",
       countryBadgeScore: 0,
       nationality: req.body.nationality,
-      nationalityVisibility: 'Public',
+      nationalityVisibility: req.body.nationalityVisibility , // Changed to Hide
       nationalityBadge: "Black",
       nationalityBadgeScore: 0,
       residentStatus: req.body.residentStatus,
-      residentStatusVisibility: 'Public',
+      residentStatusVisibility: req.body.residentStatusVisibility , // Changed to Hide
       residentStatusBadge: "Black",
       residentStatusBadgeScore: 0,
       maritalStatus: req.body.maritalStatus,
-      maritalStatusVisibility: 'Public',
+      maritalStatusVisibility: req.body.maritalStatusVisibility , // Changed to Hide
       maritalStatusBadge: "Black",
       maritalStatusBadgeScore: 0,
-      shiftPreferences, // Now properly populated
-      shiftPreferencesVisibility: 'Public',
+      shiftPreferences,
+      shiftPreferencesVisibility: req.body.shiftPreferencesVisibility , // Changed to Hide
       shiftPreferencesBadge: "Black",
       shiftPreferencesBadgeScore: 0,
-      workLocationPreference: req.body.workLocationPreference || '',
-      workLocationPreferenceVisibility: 'Public',
-      workLocationPreferenceBadge: "Black",
-      workLocationPreferenceBadgeScore: 0,
-      workAuthorization, // Now properly populated
-      workAuthorizationVisibility: 'Public',
+      workAuthorization,
+      workAuthorizationVisibility: req.body.workAuthorizationVisibility , // Changed to Hide
       workAuthorizationBadge: "Black",
       workAuthorizationBadgeScore: 0,
       resume,
-      resumeVisibility: 'Public',
+      resumeVisibility: req.body.resumeVisibility , // Changed to Hide
       resumeBadge: "Black",
       resumeBadgeScore: 0,
       education,
-      experience, // Now includes properly populated jobFunctions
+      experience,
       createdAt: new Date(),
       updatedAt: new Date()
     };
+
+    // Debug: Log the profileData to verify visibility values
+    console.log('Profile data visibility check:', {
+      nameVisibility: profileData.nameVisibility,
+      mobileVisibility: profileData.mobileVisibility,
+      emailVisibility: profileData.emailVisibility,
+      cityVisibility: profileData.cityVisibility,
+      countryVisibility: profileData.countryVisibility,
+      profilePictureVisibility: profileData.profilePictureVisibility,
+      resumeVisibility: profileData.resumeVisibility
+    });
 
     // Create or update profile
     let profile;
@@ -362,6 +366,7 @@ export const createProfile = async (req, res) => {
   }
 };
 
+// Get profile by user ID
 
 
 export const getProfileByUserId = async (req, res) => {
@@ -646,24 +651,24 @@ export const updateProfile = async (req, res) => {
 
 export const getPublicProfiles = async (req, res) => {
   try {
-    // Get the logged-in user's ID from query parameters
+ 
     const loggedInUserId = req.query.loggedInUserId;
     
-    // Debug log to verify the received userId
+    
     console.log(`Received userId for exclusion: ${loggedInUserId}`);
     
-    // Create filter to exclude user's own profile
+
     const filter = {};
     if (loggedInUserId && mongoose.Types.ObjectId.isValid(loggedInUserId)) {
       filter.userId = { $ne: new mongoose.Types.ObjectId(loggedInUserId) };
     }
 
-    // Find all profiles EXCEPT the logged-in user's
+   
     const profiles = await ProfileModel.find(filter)
       .sort({ createdAt: -1 })
       .lean();
 
-    // Debug logs
+    
     console.log(`Filtering out profile for userId: ${loggedInUserId}`);
     console.log(`Found ${profiles.length} public profiles after filtering`);
 
